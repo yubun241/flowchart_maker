@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flowchart Maker - Transparent Styles</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', sans-serif;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #f0f2f5;
+        }
+        #sidebar {
+            width: 280px;
+            background: #2c3e50;
+            color: white;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            z-index: 100;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.2);
+            overflow-y: auto;
+        }
+        .panel-section {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            border-bottom: 1px solid #3e4f5f;
+            padding-bottom: 15px;
+        }
+        label { font-size: 12px; color: #bdc3c7; }
+        select, input[type="text"], button {
+            padding: 10px; border-radius: 4px; border: none; font-size: 14px;
+        }
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        .btn-add { background: #27ae60; color: white; cursor: pointer; font-weight: bold; }
+        .btn-add:hover { background: #2ecc71; }
+        .btn-pdf { background: #e67e22; color: white; cursor: pointer; margin-top: 10px; }
+        
+        #canvas-container {
+            flex-grow: 1;
+            position: relative;
+            overflow: auto;
+            background-image: radial-gradient(#d1d1d1 1px, transparent 1px);
+            background-size: 30px 30px;
+        }
+        #canvas { position: absolute; top: 0; left: 0; width: 3000px; height: 3000px; }
+        
+        .block {
+            position: absolute;
+            width: 150px; height: 60px;
+            display: flex; align-items: center; justify-content: center;
+            cursor: move; box-sizing: border-box;
+            background: transparent;
+            text-align: center; font-weight: bold; z-index: 2;
+            user-select: none;
+        }
+        .block-shape {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: -1; pointer-events: none;
+        }
+        .block.selected .shape-path { stroke: #3498db !important; stroke-width: 4px !important; }
+        
+        .connector-dot {
+            width: 12px; height: 12px; background: #3498db; border-radius: 50%;
+            position: absolute; cursor: crosshair; display: none; z-index: 20;
+            border: 2px solid white;
+        }
+        .block:hover .connector-dot { display: block; }
+        .dot-top { top: -6px; left: 50%; margin-left: -6px; }
+        .dot-bottom { bottom: -6px; left: 50%; margin-left: -6px; }
+        .dot-left { left: -6px; top: 50%; margin-top: -6px; }
+        .dot-right { right: -6px; top: 50%; margin-top: -6px; }
+
+        svg#svg-back { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+        .conn-line { stroke: #2c3e50; stroke-width: 2; pointer-events: auto; cursor: pointer; fill: none; }
+        .temp-line { stroke: #3498db; stroke-width: 2; stroke-dasharray: 5; fill: none; }
+        
+        .line-label {
+            position: absolute; background: white; border: 1px solid #ccc;
+            padding: 2px 6px; font-size: 12px; border-radius: 3px;
+            transform: translate(-50%, -50%); z-index: 5; cursor: pointer;
+        }
+
+        #editor-input { position: absolute; display: none; z-index: 2000; padding: 5px; }
+
+        @media print {
+            #sidebar, .connector-dot { display: none !important; }
+            #canvas-container { background: white !important; overflow: visible !important; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <h2 style="margin:0; font-size: 18px;">Flowchart Maker</h2>
+    
+    <div class="panel-section">
+        <label>1. 形を選択</label>
+        <select id="shapeSelect">
+            <option value="rect">処理 (矩形)</option>
+            <option value="rounded">開始/終了 (角丸)</option>
+            <option value="diamond">条件分岐 (菱形)</option>
+            <option value="loop-start">Loop開始 (台形)</option>
+            <option value="loop-end">Loop終了 (逆台形)</option>
+        </select>
+        
+        <label>2. 内容を入力</label>
+        <input type="text" id="textInput" placeholder="内容を入力..." onkeydown="if(event.key==='Enter') addBlockFromUI()">
+        
+        <button class="btn-add" onclick="addBlockFromUI()">配置する</button>
+    </div>
+
+    <div class="panel-section">
+        <label>選択中のスタイル設定</label>
+        
+        <div class="checkbox-group">
+            <input type="checkbox" id="bgEnable" checked onchange="updateStyle()">
+            <span>背景色を付ける</span>
+        </div>
+        <input type="color" id="colorPicker" value="#ffffff" onchange="updateStyle()">
+        
+        <div class="checkbox-group" style="margin-top:10px;">
+            <input type="checkbox" id="borderEnable" checked onchange="updateStyle()">
+            <span>枠線を表示する</span>
+        </div>
+    </div>
+
+    <button class="btn-pdf" onclick="window.print()">PDF出力</button>
+
+    <div style="font-size: 11px; color: #bdc3c7; line-height: 1.6; margin-top: auto;">
+        [ヒント]<br>
+        図形を選択してから左のチェックボックスを切り替えると、枠なし・背景なしに変更できます。
+    </div>
+</div>
+
+<div id="canvas-container">
+    <svg id="svg-back">
+        <defs>
+            <marker id="arrow" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+                <polygon points="0 0, 10 3.5, 0 7" fill="#333" />
+            </marker>
+        </defs>
+        <path id="temp-line" class="temp-line" d="" style="display:none;" />
+    </svg>
+    <div id="canvas"></div>
+</div>
+
+<input type="text" id="editor-input">
+
+<script>
+    let blocks = [];
+    let connections = [];
+    let history = [];
+    let selectedBlockId = null;
+    let draggingBlock = null;
+    let drawingLine = null;
+    let offset = { x: 0, y: 0 };
+
+    const canvas = document.getElementById('canvas');
+    const svgBack = document.getElementById('svg-back');
+    const tempLine = document.getElementById('temp-line');
+    const editor = document.getElementById('editor-input');
+
+    function saveHistory() {
+        history.push(JSON.stringify({ blocks, connections }));
+        if (history.length > 30) history.shift();
+    }
+
+    function addBlockFromUI() {
+        const type = document.getElementById('shapeSelect').value;
+        const text = document.getElementById('textInput').value || 'テキスト';
+        saveHistory();
+        const id = 'b-' + Date.now();
+        blocks.push({ 
+            id, type, x: 100, y: 100, text, 
+            color: document.getElementById('colorPicker').value,
+            hasBg: document.getElementById('bgEnable').checked,
+            hasBorder: document.getElementById('borderEnable').checked
+        });
+        document.getElementById('textInput').value = '';
+        render();
+    }
+
+    function getShapePath(type) {
+        if (type === 'rect') return 'M 2,2 H 148 V 58 H 2 Z';
+        if (type === 'rounded') return 'M 20,2 H 130 A 18,18 0 0 1 148,20 V 40 A 18,18 0 0 1 130,58 H 20 A 18,18 0 0 1 2,40 V 20 A 18,18 0 0 1 20,2 Z';
+        if (type === 'diamond') return 'M 75,2 L 148,30 L 75,58 L 2,30 Z';
+        if (type === 'loop-start') return 'M 20,2 H 130 L 148,58 H 2 Z';
+        if (type === 'loop-end') return 'M 2,2 H 148 L 130,58 H 20 Z';
+        return '';
+    }
+
+    function getPoint(block, side) {
+        if (side === 'top') return { x: block.x + 75, y: block.y };
+        if (side === 'bottom') return { x: block.x + 75, y: block.y + 60 };
+        if (side === 'left') return { x: block.x, y: block.y + 30 };
+        if (side === 'right') return { x: block.x + 150, y: block.y + 30 };
+        return { x: block.x + 75, y: block.y + 30 };
+    }
+
+    function render() {
+        canvas.innerHTML = '';
+        const paths = svgBack.querySelectorAll('.conn-line');
+        paths.forEach(p => p.remove());
+
+        blocks.forEach(b => {
+            const div = document.createElement('div');
+            div.className = `block ${selectedBlockId === b.id ? 'selected' : ''}`;
+            div.style.left = b.x + 'px';
+            div.style.top = b.y + 'px';
+            div.textContent = b.text;
+            div.id = b.id;
+            
+            const shapeSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            shapeSvg.setAttribute('class', 'block-shape');
+            
+            const fill = b.hasBg ? b.color : 'none';
+            const stroke = b.hasBorder ? '#333' : 'none';
+            
+            shapeSvg.innerHTML = `<path class="shape-path" d="${getShapePath(b.type)}" fill="${fill}" stroke="${stroke}" stroke-width="2" />`;
+            div.appendChild(shapeSvg);
+
+            ['top', 'bottom', 'left', 'right'].forEach(side => {
+                const dot = document.createElement('div');
+                dot.className = `connector-dot dot-${side}`;
+                dot.onmousedown = (e) => {
+                    e.stopPropagation();
+                    drawingLine = { fromId: b.id, side: side };
+                    tempLine.style.display = 'block';
+                };
+                div.appendChild(dot);
+            });
+
+            div.onmousedown = (e) => {
+                selectedBlockId = b.id;
+                draggingBlock = b;
+                offset = { x: e.clientX - b.x, y: e.clientY - b.y };
+                // UIの状態を選択したブロックに合わせる
+                document.getElementById('bgEnable').checked = b.hasBg;
+                document.getElementById('borderEnable').checked = b.hasBorder;
+                document.getElementById('colorPicker').value = b.color;
+                render();
+                e.stopPropagation();
+            };
+            div.ondblclick = (e) => { e.stopPropagation(); startEdit(e, b, 'block'); };
+            canvas.appendChild(div);
+        });
+
+        connections.forEach((conn, idx) => {
+            const b1 = blocks.find(b => b.id === conn.fromId);
+            const b2 = blocks.find(b => b.id === conn.toId);
+            if (b1 && b2) {
+                const p1 = getPoint(b1, conn.fromSide);
+                const p2 = getPoint(b2, conn.toSide);
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.setAttribute('d', `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`);
+                path.setAttribute('class', 'conn-line');
+                path.setAttribute('marker-end', 'url(#arrow)');
+                path.oncontextmenu = (e) => { e.preventDefault(); saveHistory(); connections.splice(idx, 1); render(); };
+                path.ondblclick = (e) => { e.stopPropagation(); startEdit(e, conn, 'line'); };
+                svgBack.appendChild(path);
+                if (conn.label) {
+                    const label = document.createElement('div');
+                    label.className = 'line-label';
+                    label.style.left = ((p1.x + p2.x) / 2) + 'px';
+                    label.style.top = ((p1.y + p2.y) / 2) + 'px';
+                    label.textContent = conn.label;
+                    label.ondblclick = (e) => { e.stopPropagation(); startEdit(e, conn, 'line'); };
+                    canvas.appendChild(label);
+                }
+            }
+        });
+    }
+
+    function updateStyle() {
+        if (!selectedBlockId) return;
+        const b = blocks.find(x => x.id === selectedBlockId);
+        if (b) {
+            saveHistory();
+            b.hasBg = document.getElementById('bgEnable').checked;
+            b.hasBorder = document.getElementById('borderEnable').checked;
+            b.color = document.getElementById('colorPicker').value;
+            render();
+        }
+    }
+
+    function startEdit(e, target, type) {
+        editor.style.display = 'block';
+        editor.style.left = e.clientX + 'px';
+        editor.style.top = e.clientY + 'px';
+        editor.value = type === 'block' ? target.text : (target.label || '');
+        editor.focus();
+        editor.onblur = () => {
+            if (editor.value !== (type === 'block' ? target.text : target.label)) saveHistory();
+            if (type === 'block') target.text = editor.value; else target.label = editor.value;
+            editor.style.display = 'none';
+            render();
+        };
+    }
+
+    window.onmousemove = (e) => {
+        const rect = canvas.parentElement.getBoundingClientRect();
+        const mouseX = e.clientX + canvas.parentElement.scrollLeft - rect.left;
+        const mouseY = e.clientY + canvas.parentElement.scrollTop - rect.top;
+        if (draggingBlock) {
+            draggingBlock.x = e.clientX - offset.x;
+            draggingBlock.y = e.clientY - offset.y;
+            render();
+        }
+        if (drawingLine) {
+            const bFrom = blocks.find(b => b.id === drawingLine.fromId);
+            const p1 = getPoint(bFrom, drawingLine.side);
+            tempLine.setAttribute('d', `M ${p1.x} ${p1.y} L ${mouseX} ${mouseY}`);
+        }
+    };
+
+    window.onmouseup = (e) => {
+        if (drawingLine) {
+            tempLine.style.display = 'none';
+            const targetEl = document.elementFromPoint(e.clientX, e.clientY);
+            const targetBlockDiv = targetEl ? targetEl.closest('.block') : null;
+            if (targetBlockDiv && targetBlockDiv.id !== drawingLine.fromId) {
+                const bTo = blocks.find(b => b.id === targetBlockDiv.id);
+                const rect = targetBlockDiv.getBoundingClientRect();
+                const relX = e.clientX - rect.left;
+                const relY = e.clientY - rect.top;
+                let toSide = 'left';
+                const dists = [
+                    {s:'top', d: Math.abs(relY)}, {s:'bottom', d: Math.abs(relY - 60)},
+                    {s:'left', d: Math.abs(relX)}, {s:'right', d: Math.abs(relX - 150)}
+                ];
+                toSide = dists.sort((a,b) => a.d - b.d)[0].s;
+                saveHistory();
+                connections.push({ fromId: drawingLine.fromId, fromSide: drawingLine.side, toId: bTo.id, toSide: toSide, label: '' });
+            }
+            drawingLine = null;
+            render();
+        }
+        draggingBlock = null;
+    };
+
+    window.onkeydown = (e) => {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+        if (e.key === 'Backspace' || e.key === 'Delete') {
+            if (selectedBlockId) {
+                saveHistory();
+                blocks = blocks.filter(b => b.id !== selectedBlockId);
+                connections = connections.filter(c => c.fromId !== selectedBlockId && c.toId !== selectedBlockId);
+                selectedBlockId = null;
+                render();
+            }
+        }
+        if (e.key === 'Escape') { selectedBlockId = null; render(); }
+        if (e.ctrlKey && e.key === 'z' && history.length > 0) {
+            const state = JSON.parse(history.pop());
+            blocks = state.blocks; connections = state.connections;
+            render();
+        }
+    };
+    render();
+</script>
+
+</body>
+</html>

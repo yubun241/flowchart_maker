@@ -6,6 +6,9 @@
 
 HTML/JSのみで構築されており、インストール不要で動作します。
 
+<img width="679" height="507" alt="image" src="https://github.com/user-attachments/assets/10863059-e949-4a78-8075-b39fa573c2f7" />
+
+
 ## 主な機能
 - **多彩な形状**: 処理（矩形）、開始/終了（角丸）、分岐（菱形）、繰り返し（台形/逆台形）に対応。
   
